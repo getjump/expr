@@ -820,21 +820,53 @@ func (c *compiler) CallNode(node *ast.CallNode) {
 			}
 		}
 	}
-	c.compile(node.Callee)
-
 	if c.config != nil {
-		isMethod, _, _ := checker.MethodIndex(c.ntCache, c.config.Env, node.Callee)
-		if index, ok := checker.TypedFuncIndex(node.Callee.Type(), isMethod); ok {
-			c.emit(OpCallTyped, index)
-			return
+		isMethod, index, name := checker.MethodIndex(c.ntCache, c.config.Env, node.Callee)
+		if typed, ok := checker.TypedFuncIndex(node.Callee.Type(), isMethod); ok {
+			c.compile(node.Callee)
+			c.emit(OpCallTyped, typed)
 		} else if checker.IsFastFunc(node.Callee.Type(), isMethod) {
+			c.compile(node.Callee)
 			c.emit(OpCallFast, len(node.Arguments))
+		} else if isMethod && c.methodReceiver(node.Callee) {
+			// Call the method on the receiver directly, without binding
+			// it to a func value first.
+			c.emit(OpPush, c.addConstant(&runtime.Method{
+				Name:  name,
+				Index: index,
+			}))
+			c.emit(OpCallMethod, len(node.Arguments))
 		} else {
+			c.compile(node.Callee)
 			c.emit(OpCall, len(node.Arguments))
 		}
 	} else {
+		c.compile(node.Callee)
 		c.emit(OpCall, len(node.Arguments))
 	}
+}
+
+// methodReceiver compiles the receiver of a method callee, if compiling the
+// callee itself would emit OpMethod or OpLoadMethod.
+func (c *compiler) methodReceiver(callee ast.Node) bool {
+	switch n := callee.(type) {
+	case *ast.MemberNode:
+		c.compile(n.Node)
+		return true
+	case *ast.IdentifierNode:
+		if _, ok := c.lookupVariable(n.Value); ok || n.Value == "$env" {
+			return false
+		}
+		if c.config.Env.IsFastMap() {
+			return false
+		}
+		if ok, _, _ := checker.FieldIndex(c.ntCache, c.config.Env, n); ok {
+			return false
+		}
+		c.emit(OpLoadEnv)
+		return true
+	}
+	return false
 }
 
 func (c *compiler) BuiltinNode(node *ast.BuiltinNode) {

@@ -60,6 +60,7 @@ const (
 	OpCallFast
 	OpCallSafe
 	OpCallTyped
+	OpCallMethod
 	OpCallBuiltin1
 	OpArray
 	OpMap

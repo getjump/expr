@@ -267,6 +267,107 @@ func TestRun_InnerMethodWithError_NilSafe(t *testing.T) {
 	require.Equal(t, nil, out)
 }
 
+type callMethodVal struct{ N int }
+
+func (v callMethodVal) Add3(a, b, c int) int { return v.N + a + b + c }
+
+func (v callMethodVal) Sum(xs ...int) int {
+	s := v.N
+	for _, x := range xs {
+		s += x
+	}
+	return s
+}
+
+func (v callMethodVal) Div(a int) (int, error) {
+	if a == 0 {
+		return 0, errors.New("division by zero")
+	}
+	return v.N / a, nil
+}
+
+func (v callMethodVal) Panic(int) (int, error) { panic("method panic") }
+
+type callMethodPtr struct{ N int }
+
+func (p *callMethodPtr) Add3(a, b, c int) int   { return p.N + a + b + c }
+func (p *callMethodPtr) IsNil(a, b, c int) bool { return p == nil }
+
+type callMethodEmbedded struct{ callMethodVal }
+
+type callMethodEnv struct {
+	Val    callMethodVal
+	ValPtr *callMethodVal
+	NilVal *callMethodVal
+	Ptr    *callMethodPtr
+	NilPtr *callMethodPtr
+	Emb    callMethodEmbedded
+}
+
+func (callMethodEnv) EnvSum(xs ...int) int {
+	s := 0
+	for _, x := range xs {
+		s += x
+	}
+	return s
+}
+
+func TestRun_CallMethod(t *testing.T) {
+	env := callMethodEnv{
+		Val:    callMethodVal{N: 1},
+		ValPtr: &callMethodVal{N: 2},
+		Ptr:    &callMethodPtr{N: 3},
+		Emb:    callMethodEmbedded{callMethodVal{N: 4}},
+	}
+	tests := []struct {
+		code string
+		want any
+		err  string
+	}{
+		{code: `Val.Add3(1, 2, 3)`, want: 7},
+		{code: `ValPtr.Add3(1, 2, 3)`, want: 8},
+		{code: `Ptr.Add3(1, 2, 3)`, want: 9},
+		{code: `Emb.Add3(1, 2, 3)`, want: 10},
+		{code: `Val.Sum()`, want: 1},
+		{code: `Val.Sum(1, 2, 3)`, want: 7},
+		{code: `EnvSum(1, 2)`, want: 3},
+		{code: `Val.Div(1)`, want: 1},
+		{code: `Val.Div(0)`, err: "division by zero (1:5)\n | Val.Div(0)\n | ....^"},
+		{code: `NilPtr.IsNil(1, 2, 3)`, want: true},
+		{code: `NilPtr.Add3(1, 2, 3)`, err: "invalid memory address or nil pointer dereference"},
+		{code: `NilVal.Sum()`, err: "callMethodVal.Sum called using nil *callMethodVal pointer"},
+		{code: `Val.Panic(1)`, err: "method panic (1:5)"},
+		{code: `all([1, 2], {Val.Add3(#, 0, 0) > 1})`, want: true},
+		{code: `map([Ptr, NilPtr], {.IsNil(1, 2, 3)})`, want: []any{false, true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			program, err := expr.Compile(tt.code, expr.Env(callMethodEnv{}))
+			require.NoError(t, err)
+			require.Contains(t, program.Bytecode, vm.OpCallMethod)
+
+			out, err := vm.Run(program, env)
+			if tt.err != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, out)
+		})
+	}
+}
+
+func TestRun_CallMethod_nil_receiver(t *testing.T) {
+	program, err := expr.Compile(`v.Sum(1)`, expr.Env(map[string]any{"v": callMethodVal{}}))
+	require.NoError(t, err)
+	require.Contains(t, program.Bytecode, vm.OpCallMethod)
+
+	_, err = vm.Run(program, map[string]any{"v": nil})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot fetch Sum from <nil>")
+}
+
 func TestRun_TaggedFieldName(t *testing.T) {
 	input := `value`
 

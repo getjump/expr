@@ -350,10 +350,11 @@ func TestCompile(t *testing.T) {
 					},
 				},
 				Bytecode: []vm.Opcode{
-					vm.OpLoadMethod,
-					vm.OpCall,
+					vm.OpLoadEnv,
+					vm.OpPush,
+					vm.OpCallMethod,
 				},
-				Arguments: []int{0, 0},
+				Arguments: []int{0, 0, 0},
 			},
 		},
 		{
@@ -370,12 +371,13 @@ func TestCompile(t *testing.T) {
 					},
 				},
 				Bytecode: []vm.Opcode{
-					vm.OpLoadMethod,
-					vm.OpCall,
+					vm.OpLoadEnv,
+					vm.OpPush,
+					vm.OpCallMethod,
 					vm.OpMethod,
 					vm.OpCallTyped,
 				},
-				Arguments: []int{0, 0, 1, 12},
+				Arguments: []int{0, 0, 0, 1, 12},
 			},
 		},
 		{

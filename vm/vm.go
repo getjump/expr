@@ -374,39 +374,7 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			if fn.Kind() != reflect.Func {
 				panic(fmt.Sprintf("invalid operation: cannot call non-function of type %T", v))
 			}
-			fnType := fn.Type()
-			size := arg
-			isVariadic := fnType.IsVariadic()
-			numIn := fnType.NumIn()
-			if isVariadic {
-				if size < numIn-1 {
-					panic(fmt.Sprintf("invalid number of arguments: expected at least %d, got %d", numIn-1, size))
-				}
-			} else {
-				if size != numIn {
-					panic(fmt.Sprintf("invalid number of arguments: expected %d, got %d", numIn, size))
-				}
-			}
-			in := make([]reflect.Value, size)
-			for i := int(size) - 1; i >= 0; i-- {
-				param := vm.pop()
-				if param == nil {
-					var inType reflect.Type
-					if isVariadic && i >= numIn-1 {
-						inType = fnType.In(numIn - 1).Elem()
-					} else {
-						inType = fnType.In(i)
-					}
-					in[i] = reflect.Zero(inType)
-				} else {
-					in[i] = reflect.ValueOf(param)
-				}
-			}
-			out := fn.Call(in)
-			if len(out) == 2 && out[1].Type() == errorType && !out[1].IsNil() {
-				panic(out[1].Interface().(error))
-			}
-			vm.push(out[0].Interface())
+			vm.push(vm.callReflect(fn, arg))
 
 		case OpCall0:
 			out, err := program.functions[arg]()
@@ -471,6 +439,11 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 
 		case OpCallTyped:
 			vm.push(vm.call(vm.pop(), arg))
+
+		case OpCallMethod:
+			method := vm.pop().(*runtime.Method)
+			fn := runtime.FetchMethodValue(vm.pop(), method)
+			vm.push(vm.callReflect(fn, arg))
 
 		case OpCallBuiltin1:
 			vm.push(builtin.Builtins[arg].Fast(vm.pop()))
@@ -665,6 +638,42 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 	}
 
 	return nil, nil
+}
+
+// callReflect calls fn with size arguments from the stack using reflection.
+func (vm *VM) callReflect(fn reflect.Value, size int) any {
+	fnType := fn.Type()
+	isVariadic := fnType.IsVariadic()
+	numIn := fnType.NumIn()
+	if isVariadic {
+		if size < numIn-1 {
+			panic(fmt.Sprintf("invalid number of arguments: expected at least %d, got %d", numIn-1, size))
+		}
+	} else {
+		if size != numIn {
+			panic(fmt.Sprintf("invalid number of arguments: expected %d, got %d", numIn, size))
+		}
+	}
+	in := make([]reflect.Value, size)
+	for i := size - 1; i >= 0; i-- {
+		param := vm.pop()
+		if param == nil {
+			var inType reflect.Type
+			if isVariadic && i >= numIn-1 {
+				inType = fnType.In(numIn - 1).Elem()
+			} else {
+				inType = fnType.In(i)
+			}
+			in[i] = reflect.Zero(inType)
+		} else {
+			in[i] = reflect.ValueOf(param)
+		}
+	}
+	out := fn.Call(in)
+	if len(out) == 2 && out[1].Type() == errorType && !out[1].IsNil() {
+		panic(out[1].Interface().(error))
+	}
+	return out[0].Interface()
 }
 
 func (vm *VM) push(value any) {

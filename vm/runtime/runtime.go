@@ -193,13 +193,20 @@ type Method struct {
 }
 
 func FetchMethod(from any, method *Method) any {
+	return FetchMethodValue(from, method).Interface()
+}
+
+// FetchMethodValue returns the method of from as a reflect.Value. Unlike
+// FetchMethod, it does not bind the method to a new func value, so calling the
+// result with reflect.Value.Call goes through reflection only once.
+func FetchMethodValue(from any, method *Method) reflect.Value {
 	v := reflect.ValueOf(from)
 	kind := v.Kind()
 	if kind != reflect.Invalid {
 		// Methods can be defined on any type, no need to dereference.
 		method := v.Method(method.Index)
 		if method.IsValid() {
-			return method.Interface()
+			return method
 		}
 	}
 	panic(fmt.Sprintf("cannot fetch %v from %T", method.Name, from))
