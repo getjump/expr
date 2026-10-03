@@ -171,3 +171,43 @@ func TestFetchFromEmbeddedInterfaces(t *testing.T) {
 		})
 	}
 }
+
+type methodCacheA struct{ Name string }
+
+func (methodCacheA) Get() string { return "a" }
+
+type methodCacheB struct{}
+
+func (methodCacheB) Count() int { return 1 }
+func (methodCacheB) Get() int   { return 2 }
+
+func TestFetch_methodCache(t *testing.T) {
+	for i := 0; i < 2; i++ {
+		// The same name resolves to different methods for different types.
+		require.Equal(t, "a", Fetch(methodCacheA{}, "Get").(func() string)())
+		require.Equal(t, 2, Fetch(methodCacheB{}, "Get").(func() int)())
+		require.Equal(t, 1, Fetch(&methodCacheB{}, "Count").(func() int)())
+		// A name that is not a method falls back to the field.
+		require.Equal(t, "x", Fetch(methodCacheA{Name: "x"}, "Name"))
+	}
+}
+
+func TestFetch_methodCache_concurrent(t *testing.T) {
+	done := make(chan struct{})
+	for g := 0; g < 8; g++ {
+		go func() {
+			defer func() { done <- struct{}{} }()
+			for i := 0; i < 100; i++ {
+				if Fetch(methodCacheB{}, "Get").(func() int)() != 2 {
+					panic("wrong method")
+				}
+				if Fetch(methodCacheA{Name: "x"}, "Name") != "x" {
+					panic("wrong field")
+				}
+			}
+		}()
+	}
+	for g := 0; g < 8; g++ {
+		<-done
+	}
+}

@@ -18,6 +18,30 @@ type fieldCacheKey struct {
 	f string
 }
 
+var methodCache sync.Map
+
+// methodByName is like reflect.Value.MethodByName, but caches the method index
+// for the type and the name. reflect.Type.MethodByName builds the full
+// reflect.Method, including the method's func type, on every call.
+func methodByName(v reflect.Value, name string) reflect.Value {
+	key := fieldCacheKey{v.Type(), name}
+	if index, ok := methodCache.Load(key); ok {
+		if index.(int) < 0 {
+			return reflect.Value{}
+		}
+		return v.Method(index.(int))
+	}
+	index := -1
+	if m, ok := key.t.MethodByName(name); ok {
+		index = m.Index
+	}
+	methodCache.Store(key, index)
+	if index < 0 {
+		return reflect.Value{}
+	}
+	return v.Method(index)
+}
+
 func Fetch(from, i any) any {
 	v := reflect.ValueOf(from)
 	if v.Kind() == reflect.Invalid {
@@ -27,7 +51,7 @@ func Fetch(from, i any) any {
 	// Methods can be defined on any type.
 	if v.NumMethod() > 0 {
 		if methodName, ok := i.(string); ok {
-			method := v.MethodByName(methodName)
+			method := methodByName(v, methodName)
 			if method.IsValid() {
 				return method.Interface()
 			}
