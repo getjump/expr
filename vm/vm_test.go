@@ -330,6 +330,7 @@ func TestRun_CallMethod(t *testing.T) {
 		{code: `Emb.Add3(1, 2, 3)`, want: 10},
 		{code: `Val.Sum()`, want: 1},
 		{code: `Val.Sum(1, 2, 3)`, want: 7},
+		{code: `Val.Sum(1, 2, 3, 4, 5, 6)`, want: 22},
 		{code: `EnvSum(1, 2)`, want: 3},
 		{code: `Val.Div(1)`, want: 1},
 		{code: `Val.Div(0)`, err: "division by zero (1:5)\n | Val.Div(0)\n | ....^"},

@@ -654,7 +654,14 @@ func (vm *VM) callReflect(fn reflect.Value, size int) any {
 			panic(fmt.Sprintf("invalid number of arguments: expected %d, got %d", numIn, size))
 		}
 	}
-	in := make([]reflect.Value, size)
+	// Most functions have only a few arguments, keep them on the stack.
+	var buf [4]reflect.Value
+	var in []reflect.Value
+	if size <= len(buf) {
+		in = buf[:size]
+	} else {
+		in = make([]reflect.Value, size)
+	}
 	for i := size - 1; i >= 0; i-- {
 		param := vm.pop()
 		if param == nil {
