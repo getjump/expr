@@ -288,6 +288,8 @@ func (v callMethodVal) Div(a int) (int, error) {
 
 func (v callMethodVal) Panic(int) (int, error) { panic("method panic") }
 
+func (v callMethodVal) Inc(a int) int { return v.N + a }
+
 type callMethodPtr struct{ N int }
 
 func (p *callMethodPtr) Add3(a, b, c int) int   { return p.N + a + b + c }
@@ -302,6 +304,7 @@ type callMethodEnv struct {
 	Ptr    *callMethodPtr
 	NilPtr *callMethodPtr
 	Emb    callMethodEmbedded
+	Any    any
 }
 
 func (callMethodEnv) EnvSum(xs ...int) int {
@@ -348,6 +351,37 @@ func TestRun_CallMethod(t *testing.T) {
 			require.Contains(t, program.Bytecode, vm.OpCallMethod)
 
 			out, err := vm.Run(program, env)
+			if tt.err != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, out)
+		})
+	}
+}
+
+func TestRun_CallMethodTyped(t *testing.T) {
+	tests := []struct {
+		code string
+		env  callMethodEnv
+		want any
+		err  string
+	}{
+		{code: `Val.Inc(1)`, env: callMethodEnv{Val: callMethodVal{N: 1}}, want: 2},
+		{code: `Val.Inc(Any) > 0`, env: callMethodEnv{Any: 1}, want: true},
+		// Arguments of an unexpected type fail the same way as with OpCallTyped.
+		{code: `Val.Inc(Any)`, env: callMethodEnv{Any: "1"}, err: "interface conversion: interface {} is string, not int (1:5)"},
+		{code: `Val.Inc(Any)`, env: callMethodEnv{}, err: "interface conversion: interface {} is nil, not int (1:5)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			program, err := expr.Compile(tt.code, expr.Env(callMethodEnv{}))
+			require.NoError(t, err)
+			require.Contains(t, program.Bytecode, vm.OpCallMethodTyped)
+
+			out, err := vm.Run(program, tt.env)
 			if tt.err != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.err)

@@ -445,6 +445,11 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			fn := runtime.FetchMethodValue(vm.pop(), method)
 			vm.push(vm.callReflect(fn, arg))
 
+		case OpCallMethodTyped:
+			method := vm.pop().(*runtime.Method)
+			fn := runtime.FetchMethodValue(vm.pop(), method)
+			vm.push(vm.callMethodTyped(fn, arg))
+
 		case OpCallBuiltin1:
 			vm.push(builtin.Builtins[arg].Fast(vm.pop()))
 
@@ -681,6 +686,39 @@ func (vm *VM) callReflect(fn reflect.Value, size int) any {
 		panic(out[1].Interface().(error))
 	}
 	return out[0].Interface()
+}
+
+// funcTypes holds the reflect types of FuncTypes.
+var funcTypes = func() []reflect.Type {
+	types := make([]reflect.Type, len(FuncTypes))
+	for i, fn := range FuncTypes {
+		if fn != nil {
+			types[i] = reflect.TypeOf(fn).Elem()
+		}
+	}
+	return types
+}()
+
+// callMethodTyped calls the method fn, which is expected to have the
+// signature FuncTypes[kind]. If the method and the arguments on the stack
+// have exactly the types of that signature, the method is called directly.
+// Otherwise, the method is bound and called the same way as OpCallTyped
+// does, so the errors stay the same.
+func (vm *VM) callMethodTyped(fn reflect.Value, kind int) any {
+	t := funcTypes[kind]
+	if numIn := t.NumIn(); numIn <= len(vm.Stack) && fn.Type() == t {
+		exact := true
+		for i, arg := range vm.Stack[len(vm.Stack)-numIn:] {
+			if in := t.In(i); in.Kind() != reflect.Interface && reflect.TypeOf(arg) != in {
+				exact = false
+				break
+			}
+		}
+		if exact {
+			return vm.callReflect(fn, numIn)
+		}
+	}
+	return vm.call(fn.Interface(), kind)
 }
 
 func (vm *VM) push(value any) {

@@ -374,8 +374,8 @@ func TestCompile(t *testing.T) {
 					vm.OpLoadEnv,
 					vm.OpPush,
 					vm.OpCallMethod,
-					vm.OpMethod,
-					vm.OpCallTyped,
+					vm.OpPush,
+					vm.OpCallMethodTyped,
 				},
 				Arguments: []int{0, 0, 0, 1, 12},
 			},
@@ -441,8 +441,8 @@ func TestCompile_FuncTypes_with_Method(t *testing.T) {
 	env := mock.Env{}
 	program, err := expr.Compile("FuncTyped('bar')", expr.Env(env))
 	require.NoError(t, err)
-	require.Equal(t, vm.OpCallTyped, program.Bytecode[2])
-	require.Equal(t, 76, program.Arguments[2])
+	require.Equal(t, vm.OpCallMethodTyped, program.Bytecode[3])
+	require.Equal(t, 76, program.Arguments[3])
 }
 
 func TestCompile_FuncTypes_excludes_named_functions(t *testing.T) {

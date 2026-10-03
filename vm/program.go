@@ -306,6 +306,10 @@ func (program *Program) DisassembleWriter(w io.Writer) {
 		case OpCallMethod:
 			argument("OpCallMethod")
 
+		case OpCallMethodTyped:
+			signature := reflect.TypeOf(FuncTypes[arg]).Elem().String()
+			_, _ = fmt.Fprintf(w, "%v\t%v\t<%v>\t%v\n", pp, "OpCallMethodTyped", arg, signature)
+
 		case OpCallBuiltin1:
 			builtinArg("OpCallBuiltin1")
 

@@ -822,20 +822,26 @@ func (c *compiler) CallNode(node *ast.CallNode) {
 	}
 	if c.config != nil {
 		isMethod, index, name := checker.MethodIndex(c.ntCache, c.config.Env, node.Callee)
-		if typed, ok := checker.TypedFuncIndex(node.Callee.Type(), isMethod); ok {
-			c.compile(node.Callee)
-			c.emit(OpCallTyped, typed)
-		} else if checker.IsFastFunc(node.Callee.Type(), isMethod) {
-			c.compile(node.Callee)
-			c.emit(OpCallFast, len(node.Arguments))
-		} else if isMethod && c.methodReceiver(node.Callee) {
+		typed, isTyped := checker.TypedFuncIndex(node.Callee.Type(), isMethod)
+		isFast := !isTyped && checker.IsFastFunc(node.Callee.Type(), isMethod)
+		if isMethod && !isFast && c.methodReceiver(node.Callee) {
 			// Call the method on the receiver directly, without binding
 			// it to a func value first.
 			c.emit(OpPush, c.addConstant(&runtime.Method{
 				Name:  name,
 				Index: index,
 			}))
-			c.emit(OpCallMethod, len(node.Arguments))
+			if isTyped {
+				c.emit(OpCallMethodTyped, typed)
+			} else {
+				c.emit(OpCallMethod, len(node.Arguments))
+			}
+		} else if isTyped {
+			c.compile(node.Callee)
+			c.emit(OpCallTyped, typed)
+		} else if isFast {
+			c.compile(node.Callee)
+			c.emit(OpCallFast, len(node.Arguments))
 		} else {
 			c.compile(node.Callee)
 			c.emit(OpCall, len(node.Arguments))

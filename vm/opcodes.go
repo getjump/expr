@@ -61,6 +61,7 @@ const (
 	OpCallSafe
 	OpCallTyped
 	OpCallMethod
+	OpCallMethodTyped
 	OpCallBuiltin1
 	OpArray
 	OpMap
